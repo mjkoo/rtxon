@@ -1,0 +1,17 @@
+[package]
+name = "rtxon"
+version = "0.1.0"
+authors = ["Maxwell Koo <mjkoo90@gmail.com>"]
+edition = "2018"
+description = "Simple raytracer built as a learning exercise in Rust"
+repository = "https://github.com/mjkoo/rtxon"
+readme = "README.md"
+license = "Apache-2.0"
+
+[dependencies]
+clap = "2.32"
+env_logger = "0.6"
+failure = "0.1"
+log = "0.4"
+image = "0.21"
+nalgebra = "0.16"
