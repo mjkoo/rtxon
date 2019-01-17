@@ -48,6 +48,25 @@ fn reflect(v: Vector3<f32>, n: Vector3<f32>) -> Vector3<f32> {
     v - 2.0 * v.dot(&n) * n
 }
 
+fn refract(v: Vector3<f32>, n: Vector3<f32>, ni_over_nt: f32) -> Option<Vector3<f32>> {
+    let uv = v.normalize();
+    let dt = uv.dot(&n);
+    let discriminant = 1.0 - ni_over_nt * ni_over_nt * (1.0 - dt * dt);
+
+    if discriminant > 0.0 {
+        let refracted = ni_over_nt * (uv - n * dt) - n * discriminant.sqrt();
+        Some(refracted)
+    } else {
+        None
+    }
+}
+
+fn schlick(cosine: f32, ior: f32) -> f32 {
+    let sqrt_r0 = (1.0 - ior) / (1.0 + ior);
+    let r0 = sqrt_r0 * sqrt_r0;
+    r0 + (1.0 - r0) * (1.0 - cosine).powi(5)
+}
+
 #[derive(Debug, Clone)]
 struct Camera {
     origin: Point3<f32>,
@@ -165,6 +184,44 @@ impl Material for Metal {
     }
 }
 
+#[derive(Debug, Clone)]
+struct Dialectric {
+    ior: f32,
+}
+
+impl Material for Dialectric {
+    fn scatter(&self, ray: &Ray, hit: &HitResult) -> Option<ScatteredRay> {
+        let attenuation = Vector3::new(1.0, 1.0, 1.0);
+
+        let reflected = reflect(ray.direction, hit.normal);
+        let dot = ray.direction.dot(&hit.normal);
+
+        let (outward_normal, ni_over_nt, cosine) = if dot > 0.0 {
+            (
+                -hit.normal,
+                self.ior,
+                self.ior * dot / ray.direction.magnitude(),
+            )
+        } else {
+            (-hit.normal, self.ior, -dot / ray.direction.magnitude())
+        };
+
+        if let Some(refracted) = refract(ray.direction, outward_normal, ni_over_nt) {
+            if random::<f32>() >= schlick(cosine, self.ior) {
+                return Some(ScatteredRay {
+                    ray: Ray::new(hit.p, refracted),
+                    attenuation,
+                });
+            }
+        }
+
+        Some(ScatteredRay {
+            ray: Ray::new(hit.p, reflected),
+            attenuation,
+        })
+    }
+}
+
 fn color(ray: &Ray, scene: &dyn Hit, maxdepth: u32, depth: u32) -> Vector3<f32> {
     if let Some(hit) = scene.hit(&ray, 0.001, std::f32::MAX) {
         if depth >= maxdepth {
@@ -172,9 +229,12 @@ fn color(ray: &Ray, scene: &dyn Hit, maxdepth: u32, depth: u32) -> Vector3<f32> 
         }
 
         if let Some(scattered) = hit.material.scatter(&ray, &hit) {
-            return scattered
-                .attenuation
-                .component_mul(&color(&scattered.ray, scene, maxdepth, depth + 1));
+            return scattered.attenuation.component_mul(&color(
+                &scattered.ray,
+                scene,
+                maxdepth,
+                depth + 1,
+            ));
         }
     }
 
@@ -246,7 +306,10 @@ fn main() -> Result<(), Error> {
     let samples = value_t_or_exit!(matches.value_of("samples"), u32);
     let maxdepth = value_t_or_exit!(matches.value_of("maxdepth"), u32);
 
-    info!("Rendering to {} ({}x{})", &output, width, height);
+    info!(
+        "Rendering to {} ({}x{}), {} samples, {} depth",
+        &output, width, height, samples, maxdepth
+    );
 
     let scene: Vec<Box<dyn Hit>> = vec![
         Box::new(Sphere {
@@ -274,10 +337,12 @@ fn main() -> Result<(), Error> {
         Box::new(Sphere {
             center: Point3::new(-1.0, 0.0, -1.0),
             radius: 0.5,
-            material: Rc::new(Metal {
-                albedo: Rgb([0xcc, 0xcc, 0xcc]),
-                roughness: 1.0,
-            }),
+            material: Rc::new(Dialectric { ior: 1.5 }),
+        }),
+        Box::new(Sphere {
+            center: Point3::new(-1.0, 0.0, -1.0),
+            radius: -0.45,
+            material: Rc::new(Dialectric { ior: 1.5 }),
         }),
     ];
 
