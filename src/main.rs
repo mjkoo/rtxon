@@ -9,7 +9,21 @@ fn f32_to_u8(f: f32) -> u8 {
     (f * 255.99) as u8
 }
 
-fn color(ray: Ray) -> Rgb<u8> {
+fn hit_sphere(center: Point3<f32>, radius: f32, ray: &Ray) -> bool {
+    let oc = ray.origin - center;
+    let a = ray.direction.dot(&ray.direction);
+    let b = 2.0 * oc.dot(&ray.direction);
+    let c = oc.dot(&oc) - radius * radius;
+    let discriminant = b * b - 4.0 * a * c;
+
+    discriminant > 0.0
+}
+
+fn color(ray: &Ray) -> Rgb<u8> {
+    if hit_sphere(Point3::new(0.0, 0.0, -1.0), 0.5, &ray) {
+        return Rgb([255, 0, 0]);
+    }
+
     let unit_direction = Unit::new_normalize(ray.direction).into_inner();
     let t = 0.5 * (unit_direction.y + 1.0);
     let color = (1.0 - t) * Vector3::new(1.0, 1.0, 1.0) + t * Vector3::new(0.5, 0.7, 1.0);
@@ -70,7 +84,7 @@ fn main() -> Result<(), Error> {
         let v = y as f32 / height as f32;
 
         let ray = Ray::new(origin, lower_left_corner + u * horizontal + (1.0 - v) * vertical);
-        color(ray)
+        color(&ray)
     });
 
     img.save(output).map_err(Error::from)
