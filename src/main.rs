@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::rc::Rc;
 
 use bvh::ray::Ray;
 use clap::{value_t_or_exit, App, Arg};
@@ -12,8 +13,21 @@ fn f32_to_u8(f: f32) -> u8 {
     (f * 255.99) as u8
 }
 
+fn u8_to_f32(b: u8) -> f32 {
+    (b as f32) / 255.0
+}
+
+// TODO: Implement From for these conversions
 fn vector3_to_color(v: Vector3<f32>) -> Rgb<u8> {
     Rgb([f32_to_u8(v.x), f32_to_u8(v.y), f32_to_u8(v.z)])
+}
+
+fn color_to_vector3(color: Rgb<u8>) -> Vector3<f32> {
+    Vector3::new(
+        u8_to_f32(color[0]),
+        u8_to_f32(color[1]),
+        u8_to_f32(color[2]),
+    )
 }
 
 fn point_at_parameter(ray: &Ray, t: f32) -> Point3<f32> {
@@ -23,16 +37,15 @@ fn point_at_parameter(ray: &Ray, t: f32) -> Point3<f32> {
 fn random_in_unit_square() -> Vector3<f32> {
     let mut p: Vector3<f32>;
     while {
-        p = 2.0
-            * Vector3::new(
-                random::<f32>(),
-                random::<f32>(),
-                random::<f32>(),
-            );
+        p = 2.0 * Vector3::new(random::<f32>(), random::<f32>(), random::<f32>());
         p.magnitude_squared() >= 1.0
     } {}
 
     p
+}
+
+fn reflect(v: Vector3<f32>, n: Vector3<f32>) -> Vector3<f32> {
+    v - 2.0 * v.dot(&n) * n
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +70,7 @@ struct HitResult {
     t: f32,
     p: Point3<f32>,
     normal: Vector3<f32>,
+    material: Rc<dyn Material>,
 }
 
 trait Hit {
@@ -67,6 +81,7 @@ trait Hit {
 struct Sphere {
     center: Point3<f32>,
     radius: f32,
+    material: Rc<dyn Material>,
 }
 
 impl Hit for Sphere {
@@ -85,7 +100,12 @@ impl Hit for Sphere {
         if discriminant > 0.0 && t > t_min && t < t_max {
             let p = point_at_parameter(&ray, t);
             let normal = (p - self.center) / self.radius;
-            Some(HitResult { t, p, normal })
+            Some(HitResult {
+                t,
+                p,
+                normal,
+                material: self.material.clone(),
+            })
         } else {
             None
         }
@@ -100,10 +120,62 @@ impl Hit for Vec<Box<dyn Hit>> {
     }
 }
 
-fn color(ray: &Ray, scene: &dyn Hit) -> Vector3<f32> {
+struct ScatteredRay {
+    ray: Ray,
+    attenuation: Vector3<f32>,
+}
+
+trait Material: std::fmt::Debug {
+    fn scatter(&self, ray: &Ray, hit: &HitResult) -> Option<ScatteredRay>;
+}
+
+#[derive(Debug, Clone)]
+struct Lambertian {
+    albedo: Rgb<u8>,
+}
+
+impl Material for Lambertian {
+    fn scatter(&self, ray: &Ray, hit: &HitResult) -> Option<ScatteredRay> {
+        let _ = ray;
+        let target = hit.p.coords + hit.normal + random_in_unit_square();
+        Some(ScatteredRay {
+            ray: Ray::new(hit.p, target),
+            attenuation: color_to_vector3(self.albedo),
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Metal {
+    albedo: Rgb<u8>,
+    roughness: f32,
+}
+
+impl Material for Metal {
+    fn scatter(&self, ray: &Ray, hit: &HitResult) -> Option<ScatteredRay> {
+        let reflected = reflect(ray.direction.normalize(), hit.normal);
+        if reflected.dot(&hit.normal) > 0.0 {
+            Some(ScatteredRay {
+                ray: Ray::new(hit.p, reflected + self.roughness * random_in_unit_square()),
+                attenuation: color_to_vector3(self.albedo),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+fn color(ray: &Ray, scene: &dyn Hit, maxdepth: u32, depth: u32) -> Vector3<f32> {
     if let Some(hit) = scene.hit(&ray, 0.001, std::f32::MAX) {
-        let target = hit.p + hit.normal + random_in_unit_square();
-        return 0.5 * color(&Ray::new(hit.p, target - hit.p), scene)
+        if depth >= maxdepth {
+            return Vector3::new(0.0, 0.0, 0.0);
+        }
+
+        if let Some(scattered) = hit.material.scatter(&ray, &hit) {
+            return scattered
+                .attenuation
+                .component_mul(&color(&scattered.ray, scene, maxdepth, depth + 1));
+        }
     }
 
     let unit_direction = ray.direction.normalize();
@@ -155,6 +227,15 @@ fn main() -> Result<(), Error> {
                 .takes_value(true)
                 .default_value("100"),
         )
+        .arg(
+            Arg::with_name("maxdepth")
+                .short("d")
+                .long("maxdepth")
+                .value_name("DEPTH")
+                .help("Maximum recursion depth")
+                .takes_value(true)
+                .default_value("50"),
+        )
         .get_matches();
 
     let output = matches
@@ -163,6 +244,7 @@ fn main() -> Result<(), Error> {
     let width = value_t_or_exit!(matches.value_of("width"), u32);
     let height = value_t_or_exit!(matches.value_of("height"), u32);
     let samples = value_t_or_exit!(matches.value_of("samples"), u32);
+    let maxdepth = value_t_or_exit!(matches.value_of("maxdepth"), u32);
 
     info!("Rendering to {} ({}x{})", &output, width, height);
 
@@ -170,10 +252,32 @@ fn main() -> Result<(), Error> {
         Box::new(Sphere {
             center: Point3::new(0.0, 0.0, -1.0),
             radius: 0.5,
+            material: Rc::new(Lambertian {
+                albedo: Rgb([0xcc, 0x4c, 0x4c]),
+            }),
         }),
         Box::new(Sphere {
             center: Point3::new(0.0, -100.5, -1.0),
             radius: 100.0,
+            material: Rc::new(Lambertian {
+                albedo: Rgb([0xcc, 0xcc, 0x00]),
+            }),
+        }),
+        Box::new(Sphere {
+            center: Point3::new(1.0, 0.0, -1.0),
+            radius: 0.5,
+            material: Rc::new(Metal {
+                albedo: Rgb([0xcc, 0x99, 0x33]),
+                roughness: 0.3,
+            }),
+        }),
+        Box::new(Sphere {
+            center: Point3::new(-1.0, 0.0, -1.0),
+            radius: 0.5,
+            material: Rc::new(Metal {
+                albedo: Rgb([0xcc, 0xcc, 0xcc]),
+                roughness: 1.0,
+            }),
         }),
     ];
 
@@ -192,7 +296,7 @@ fn main() -> Result<(), Error> {
             let v = 1.0 - (y as f32 + random::<f32>()) / height as f32;
 
             let ray = camera.get_ray(u, v);
-            c += color(&ray, &scene)
+            c += color(&ray, &scene, maxdepth, 0)
         }
 
         vector3_to_color(c / (samples as f32))
