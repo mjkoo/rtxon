@@ -48,7 +48,7 @@ impl Material for Lambertian {
         let _ = ray;
         let target = hit.p.coords + hit.normal + random_in_unit_sphere();
         Some(ScatteredRay {
-            ray: Ray::new(hit.p, target),
+            ray: Ray::new(hit.p, target - hit.p.coords),
             attenuation: color_to_vector3(self.albedo),
         })
     }

@@ -29,9 +29,10 @@ pub fn point_at_parameter(ray: &Ray, t: f32) -> Point3<f32> {
 }
 
 pub fn random_in_unit_sphere() -> Vector3<f32> {
+    let offset = Vector3::new(1.0, 1.0, 1.0);
     let mut p: Vector3<f32>;
     while {
-        p = 2.0 * Vector3::new(random::<f32>(), random::<f32>(), random::<f32>());
+        p = 2.0 * Vector3::new(random::<f32>(), random::<f32>(), random::<f32>()) - offset;
         p.magnitude_squared() >= 1.0
     } {}
 
@@ -39,9 +40,10 @@ pub fn random_in_unit_sphere() -> Vector3<f32> {
 }
 
 pub fn random_in_unit_disk() -> Vector3<f32> {
+    let offset = Vector3::new(1.0, 1.0, 0.0);
     let mut p: Vector3<f32>;
     while {
-        p = 2.0 * Vector3::new(random::<f32>(), random::<f32>(), 0.0) - Vector3::new(1.0, 1.0, 0.0);
+        p = 2.0 * Vector3::new(random::<f32>(), random::<f32>(), 0.0) - offset;
         p.dot(&p) >= 1.0
     } {}
 

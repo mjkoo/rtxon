@@ -236,7 +236,7 @@ fn main() -> Result<(), Error> {
     });
 
     let end = Instant::now();
-    pb.finish_print("done");
+    pb.finish();
 
     info!("Rendered in {:?}", end.duration_since(start));
 

@@ -33,13 +33,19 @@ impl Shape for Sphere {
         let b = 2.0 * oc.dot(&ray.direction);
         let c = oc.dot(&oc) - self.radius * self.radius;
 
-        // This seems wrong in that it doesn't detect which point is closest to ray origin
         let discriminant = b * b - 4.0 * a * c;
         let t1 = (-b - discriminant.sqrt()) / (2.0 * a);
         let t2 = (-b + discriminant.sqrt()) / (2.0 * a);
-        let t = t1.min(t2);
 
-        if discriminant > 0.0 && t > t_min && t < t_max {
+        let t = if discriminant > 0.0 && t1 < t2 && t1 > t_min && t1 < t_max {
+            Some(t1)
+        } else if discriminant > 0.0 && t2 < t1 && t2 > t_min && t2 < t_max {
+            Some(t2)
+        } else {
+            None
+        };
+
+        t.and_then(|t| {
             let p = point_at_parameter(&ray, t);
             let normal = (p - self.center) / self.radius;
             Some(HitResult {
@@ -48,9 +54,7 @@ impl Shape for Sphere {
                 normal,
                 material: self.material.clone(),
             })
-        } else {
-            None
-        }
+        })
     }
 }
 
