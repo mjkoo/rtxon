@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::rc::Rc;
 
 use bvh::ray::Ray;
@@ -9,220 +8,17 @@ use log::info;
 use nalgebra::{Point3, Vector3};
 use rand::random;
 
-fn f32_to_u8(f: f32) -> u8 {
-    (f * 255.99) as u8
-}
+mod camera;
+mod materials;
+mod shapes;
+mod utils;
 
-fn u8_to_f32(b: u8) -> f32 {
-    (b as f32) / 255.0
-}
+use crate::camera::Camera;
+use crate::materials::{Dialectric, Lambertian, Metal};
+use crate::shapes::{Scene, Shape, Sphere};
+use crate::utils::vector3_to_color;
 
-// TODO: Implement From for these conversions
-fn vector3_to_color(v: Vector3<f32>) -> Rgb<u8> {
-    Rgb([f32_to_u8(v.x), f32_to_u8(v.y), f32_to_u8(v.z)])
-}
-
-fn color_to_vector3(color: Rgb<u8>) -> Vector3<f32> {
-    Vector3::new(
-        u8_to_f32(color[0]),
-        u8_to_f32(color[1]),
-        u8_to_f32(color[2]),
-    )
-}
-
-fn point_at_parameter(ray: &Ray, t: f32) -> Point3<f32> {
-    ray.origin + t * ray.direction.normalize()
-}
-
-fn random_in_unit_square() -> Vector3<f32> {
-    let mut p: Vector3<f32>;
-    while {
-        p = 2.0 * Vector3::new(random::<f32>(), random::<f32>(), random::<f32>());
-        p.magnitude_squared() >= 1.0
-    } {}
-
-    p
-}
-
-fn reflect(v: Vector3<f32>, n: Vector3<f32>) -> Vector3<f32> {
-    v - 2.0 * v.dot(&n) * n
-}
-
-fn refract(v: Vector3<f32>, n: Vector3<f32>, ni_over_nt: f32) -> Option<Vector3<f32>> {
-    let uv = v.normalize();
-    let dt = uv.dot(&n);
-    let discriminant = 1.0 - ni_over_nt * ni_over_nt * (1.0 - dt * dt);
-
-    if discriminant > 0.0 {
-        let refracted = ni_over_nt * (uv - n * dt) - n * discriminant.sqrt();
-        Some(refracted)
-    } else {
-        None
-    }
-}
-
-fn schlick(cosine: f32, ior: f32) -> f32 {
-    let sqrt_r0 = (1.0 - ior) / (1.0 + ior);
-    let r0 = sqrt_r0 * sqrt_r0;
-    r0 + (1.0 - r0) * (1.0 - cosine).powi(5)
-}
-
-#[derive(Debug, Clone)]
-struct Camera {
-    origin: Point3<f32>,
-    lower_left_corner: Point3<f32>,
-    horizontal: Vector3<f32>,
-    vertical: Vector3<f32>,
-}
-
-impl Camera {
-    fn get_ray(&self, u: f32, v: f32) -> Ray {
-        Ray::new(
-            self.origin,
-            self.lower_left_corner.coords + u * self.horizontal + v * self.vertical,
-        )
-    }
-}
-
-#[derive(Debug, Clone)]
-struct HitResult {
-    t: f32,
-    p: Point3<f32>,
-    normal: Vector3<f32>,
-    material: Rc<dyn Material>,
-}
-
-trait Hit {
-    fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitResult>;
-}
-
-#[derive(Debug, Clone)]
-struct Sphere {
-    center: Point3<f32>,
-    radius: f32,
-    material: Rc<dyn Material>,
-}
-
-impl Hit for Sphere {
-    fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitResult> {
-        let oc = ray.origin - self.center;
-        let a = ray.direction.dot(&ray.direction);
-        let b = 2.0 * oc.dot(&ray.direction);
-        let c = oc.dot(&oc) - self.radius * self.radius;
-
-        // This seems wrong in that it doesn't detect which point is closest to ray origin
-        let discriminant = b * b - 4.0 * a * c;
-        let t1 = (-b - discriminant.sqrt()) / (2.0 * a);
-        let t2 = (-b + discriminant.sqrt()) / (2.0 * a);
-        let t = t1.min(t2);
-
-        if discriminant > 0.0 && t > t_min && t < t_max {
-            let p = point_at_parameter(&ray, t);
-            let normal = (p - self.center) / self.radius;
-            Some(HitResult {
-                t,
-                p,
-                normal,
-                material: self.material.clone(),
-            })
-        } else {
-            None
-        }
-    }
-}
-
-impl Hit for Vec<Box<dyn Hit>> {
-    fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitResult> {
-        self.iter()
-            .filter_map(|h| h.hit(&ray, t_min, t_max))
-            .min_by(|x, y| x.t.partial_cmp(&y.t).unwrap_or(Ordering::Equal))
-    }
-}
-
-struct ScatteredRay {
-    ray: Ray,
-    attenuation: Vector3<f32>,
-}
-
-trait Material: std::fmt::Debug {
-    fn scatter(&self, ray: &Ray, hit: &HitResult) -> Option<ScatteredRay>;
-}
-
-#[derive(Debug, Clone)]
-struct Lambertian {
-    albedo: Rgb<u8>,
-}
-
-impl Material for Lambertian {
-    fn scatter(&self, ray: &Ray, hit: &HitResult) -> Option<ScatteredRay> {
-        let _ = ray;
-        let target = hit.p.coords + hit.normal + random_in_unit_square();
-        Some(ScatteredRay {
-            ray: Ray::new(hit.p, target),
-            attenuation: color_to_vector3(self.albedo),
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Metal {
-    albedo: Rgb<u8>,
-    roughness: f32,
-}
-
-impl Material for Metal {
-    fn scatter(&self, ray: &Ray, hit: &HitResult) -> Option<ScatteredRay> {
-        let reflected = reflect(ray.direction.normalize(), hit.normal);
-        if reflected.dot(&hit.normal) > 0.0 {
-            Some(ScatteredRay {
-                ray: Ray::new(hit.p, reflected + self.roughness * random_in_unit_square()),
-                attenuation: color_to_vector3(self.albedo),
-            })
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Dialectric {
-    ior: f32,
-}
-
-impl Material for Dialectric {
-    fn scatter(&self, ray: &Ray, hit: &HitResult) -> Option<ScatteredRay> {
-        let attenuation = Vector3::new(1.0, 1.0, 1.0);
-
-        let reflected = reflect(ray.direction, hit.normal);
-        let dot = ray.direction.dot(&hit.normal);
-
-        let (outward_normal, ni_over_nt, cosine) = if dot > 0.0 {
-            (
-                -hit.normal,
-                self.ior,
-                self.ior * dot / ray.direction.magnitude(),
-            )
-        } else {
-            (-hit.normal, self.ior, -dot / ray.direction.magnitude())
-        };
-
-        if let Some(refracted) = refract(ray.direction, outward_normal, ni_over_nt) {
-            if random::<f32>() >= schlick(cosine, self.ior) {
-                return Some(ScatteredRay {
-                    ray: Ray::new(hit.p, refracted),
-                    attenuation,
-                });
-            }
-        }
-
-        Some(ScatteredRay {
-            ray: Ray::new(hit.p, reflected),
-            attenuation,
-        })
-    }
-}
-
-fn color(ray: &Ray, scene: &dyn Hit, maxdepth: u32, depth: u32) -> Vector3<f32> {
+fn color(ray: &Ray, scene: &Scene, maxdepth: u32, depth: u32) -> Vector3<f32> {
     if let Some(hit) = scene.hit(&ray, 0.001, std::f32::MAX) {
         if depth >= maxdepth {
             return Vector3::new(0.0, 0.0, 0.0);
@@ -311,12 +107,12 @@ fn main() -> Result<(), Error> {
         &output, width, height, samples, maxdepth
     );
 
-    let scene: Vec<Box<dyn Hit>> = vec![
+    let scene: Scene = vec![
         Box::new(Sphere {
             center: Point3::new(0.0, 0.0, -1.0),
             radius: 0.5,
             material: Rc::new(Lambertian {
-                albedo: Rgb([0xcc, 0x4c, 0x4c]),
+                albedo: Rgb([0x19, 0x33, 0x7f]),
             }),
         }),
         Box::new(Sphere {
@@ -337,21 +133,35 @@ fn main() -> Result<(), Error> {
         Box::new(Sphere {
             center: Point3::new(-1.0, 0.0, -1.0),
             radius: 0.5,
-            material: Rc::new(Dialectric { ior: 1.5 }),
+            material: Rc::new(Dialectric {
+                albedo: Rgb([255, 255, 255]),
+                ior: 1.5,
+            }),
         }),
         Box::new(Sphere {
             center: Point3::new(-1.0, 0.0, -1.0),
             radius: -0.45,
-            material: Rc::new(Dialectric { ior: 1.5 }),
+            material: Rc::new(Dialectric {
+                albedo: Rgb([255, 255, 255]),
+                ior: 1.5,
+            }),
         }),
     ];
 
-    let camera = Camera {
-        origin: Point3::new(0.0, 0.0, 0.0),
-        lower_left_corner: Point3::new(-2.0, -1.0, -1.0),
-        horizontal: Vector3::new(4.0, 0.0, 0.0),
-        vertical: Vector3::new(0.0, 2.0, 0.0),
-    };
+    let origin = Point3::new(3.0, 3.0, 2.0);
+    let lookat = Point3::new(0.0, 0.0, -1.0);
+    let aspect_ratio = (width as f32) / (height as f32);
+    let focal_length = (origin - lookat).magnitude();
+
+    let camera = Camera::new(
+        origin,
+        lookat,
+        Vector3::y(),
+        20.0,
+        aspect_ratio,
+        2.0,
+        focal_length,
+    );
 
     let img = ImageBuffer::from_fn(width, height, |x, y| {
         let mut c = Vector3::new(0.0, 0.0, 0.0);
