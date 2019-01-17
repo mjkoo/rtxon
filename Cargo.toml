@@ -9,9 +9,18 @@ readme = "README.md"
 license = "Apache-2.0"
 
 [dependencies]
+bvh = { git = "https://github.com/svenstaro/bvh.git", rev = "35a9df4" }
 clap = "2.32"
-env_logger = "0.6"
 failure = "0.1"
 log = "0.4"
-image = "0.21"
 nalgebra = "0.16"
+image = "0.21"
+pretty_env_logger = "0.3"
+
+[profile.release]
+lto = true
+opt-level = 3
+
+[profile.bench]
+lto = true
+opt-level = 3

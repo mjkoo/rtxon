@@ -1,9 +1,26 @@
+use bvh::ray::Ray;
 use clap::{value_t_or_exit, App, Arg};
+use failure::Error;
 use image::{ImageBuffer, Rgb};
+use log::info;
+use nalgebra::{Point3, Unit, Vector3};
 
-fn main() {
+fn f32_to_u8(f: f32) -> u8 {
+    (f * 255.99) as u8
+}
+
+fn color(ray: Ray) -> Rgb<u8> {
+    let unit_direction = Unit::new_normalize(ray.direction).into_inner();
+    let t = 0.5 * (unit_direction.y + 1.0);
+    let color = (1.0 - t) * Vector3::new(1.0, 1.0, 1.0) + t * Vector3::new(0.5, 0.7, 1.0);
+    Rgb([f32_to_u8(color.x), f32_to_u8(color.y), f32_to_u8(color.z)])
+}
+
+fn main() -> Result<(), Error> {
+    pretty_env_logger::init();
+
     let matches = App::new("rtxon")
-        .version("0.1.0")
+        .version(env!("CARGO_PKG_VERSION"))
         .about("Simple raytracer built as a learning exercise in Rust")
         .author("Maxwell Koo <mjkoo90@gmail.com>")
         .arg(
@@ -41,15 +58,20 @@ fn main() {
     let width = value_t_or_exit!(matches.value_of("width"), u32);
     let height = value_t_or_exit!(matches.value_of("height"), u32);
 
-    println!("{}, {}x{}", &output, width, height);
+    info!("Rendering to {} ({}x{})", &output, width, height);
+
+    let origin = Point3::new(0.0, 0.0, 0.0);
+    let lower_left_corner = Vector3::new(-2.0, -1.0, -1.0);
+    let horizontal = Vector3::new(4.0, 0.0, 0.0);
+    let vertical = Vector3::new(0.0, 2.0, 0.0);
 
     let img = ImageBuffer::from_fn(width, height, |x, y| {
-        let r = (x as f64) / (width as f64);
-        let g = (y as f64) / (height as f64);
-        let b = 0.2;
+        let u = x as f32 / width as f32;
+        let v = y as f32 / height as f32;
 
-        Rgb([(r * 255.99) as u8, (g * 255.99) as u8, (b * 255.99) as u8])
+        let ray = Ray::new(origin, lower_left_corner + u * horizontal + (1.0 - v) * vertical);
+        color(ray)
     });
 
-    img.save(output).expect("Could not write image");
+    img.save(output).map_err(Error::from)
 }
