@@ -5,7 +5,8 @@ use clap::{value_t_or_exit, App, Arg};
 use failure::Error;
 use image::{ImageBuffer, Rgb};
 use log::info;
-use nalgebra::{Point3, Unit, Vector3};
+use nalgebra::{Point3, Vector3};
+use rand::random;
 
 fn f32_to_u8(f: f32) -> u8 {
     (f * 255.99) as u8
@@ -16,7 +17,22 @@ fn vector3_to_color(v: Vector3<f32>) -> Rgb<u8> {
 }
 
 fn point_at_parameter(ray: &Ray, t: f32) -> Point3<f32> {
-    ray.origin + t * Unit::new_normalize(ray.direction).into_inner()
+    ray.origin + t * ray.direction.normalize()
+}
+
+fn random_in_unit_square() -> Vector3<f32> {
+    let mut p: Vector3<f32>;
+    while {
+        p = 2.0
+            * Vector3::new(
+                random::<f32>(),
+                random::<f32>(),
+                random::<f32>(),
+            );
+        p.magnitude_squared() >= 1.0
+    } {}
+
+    p
 }
 
 #[derive(Debug, Clone)]
@@ -29,7 +45,10 @@ struct Camera {
 
 impl Camera {
     fn get_ray(&self, u: f32, v: f32) -> Ray {
-        Ray::new(self.origin, self.lower_left_corner.coords + u * self.horizontal + v * self.vertical)
+        Ray::new(
+            self.origin,
+            self.lower_left_corner.coords + u * self.horizontal + v * self.vertical,
+        )
     }
 }
 
@@ -61,15 +80,12 @@ impl Hit for Sphere {
         let discriminant = b * b - 4.0 * a * c;
         let t1 = (-b - discriminant.sqrt()) / (2.0 * a);
         let t2 = (-b + discriminant.sqrt()) / (2.0 * a);
+        let t = t1.min(t2);
 
-        if discriminant > 0.0 && t1 > t_min && t1 < t_max {
-            let p = point_at_parameter(&ray, t1);
+        if discriminant > 0.0 && t > t_min && t < t_max {
+            let p = point_at_parameter(&ray, t);
             let normal = (p - self.center) / self.radius;
-            Some(HitResult { t: t1, p, normal })
-        } else if discriminant > 0.0 && t2 > t_min && t2 < t_max {
-            let p = point_at_parameter(&ray, t2);
-            let normal = (p - self.center) / self.radius;
-            Some(HitResult { t: t2, p, normal })
+            Some(HitResult { t, p, normal })
         } else {
             None
         }
@@ -85,11 +101,12 @@ impl Hit for Vec<Box<dyn Hit>> {
 }
 
 fn color(ray: &Ray, scene: &dyn Hit) -> Vector3<f32> {
-    if let Some(hit) = scene.hit(&ray, 0.0, std::f32::MAX) {
-        return 0.5 * Vector3::new(hit.normal.x + 1.0, hit.normal.y + 1.0, hit.normal.z + 1.0);
+    if let Some(hit) = scene.hit(&ray, 0.001, std::f32::MAX) {
+        let target = hit.p + hit.normal + random_in_unit_square();
+        return 0.5 * color(&Ray::new(hit.p, target - hit.p), scene)
     }
 
-    let unit_direction = Unit::new_normalize(ray.direction).into_inner();
+    let unit_direction = ray.direction.normalize();
     let t = 0.5 * (unit_direction.y + 1.0);
 
     (1.0 - t) * Vector3::new(1.0, 1.0, 1.0) + t * Vector3::new(0.5, 0.7, 1.0)
@@ -160,7 +177,7 @@ fn main() -> Result<(), Error> {
         }),
     ];
 
-    let camera = Camera{
+    let camera = Camera {
         origin: Point3::new(0.0, 0.0, 0.0),
         lower_left_corner: Point3::new(-2.0, -1.0, -1.0),
         horizontal: Vector3::new(4.0, 0.0, 0.0),
@@ -171,8 +188,8 @@ fn main() -> Result<(), Error> {
         let mut c = Vector3::new(0.0, 0.0, 0.0);
 
         for _ in 0..samples {
-            let u = (x as f32 + rand::random::<f32>()) / width as f32;
-            let v = 1.0 - (y as f32 + rand::random::<f32>()) / height as f32;
+            let u = (x as f32 + random::<f32>()) / width as f32;
+            let v = 1.0 - (y as f32 + random::<f32>()) / height as f32;
 
             let ray = camera.get_ray(u, v);
             c += color(&ray, &scene)
