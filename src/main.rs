@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use bvh::ray::Ray;
 use clap::{value_t_or_exit, App, Arg};
 use failure::Error;
@@ -9,34 +11,68 @@ fn f32_to_u8(f: f32) -> u8 {
     (f * 255.99) as u8
 }
 
-fn hit_sphere(center: Point3<f32>, radius: f32, ray: &Ray) -> f32 {
-    let oc = ray.origin - center;
-    let a = ray.direction.dot(&ray.direction);
-    let b = 2.0 * oc.dot(&ray.direction);
-    let c = oc.dot(&oc) - radius * radius;
-    let discriminant = b * b - 4.0 * a * c;
-
-    if discriminant < 0.0 {
-        -1.0
-    } else {
-        (-b - discriminant.sqrt()) / (2.0 * a)
-    }
+fn vector3_to_color(v: Vector3<f32>) -> Rgb<u8> {
+    Rgb([f32_to_u8(v.x), f32_to_u8(v.y), f32_to_u8(v.z)])
 }
 
 fn point_at_parameter(ray: &Ray, t: f32) -> Point3<f32> {
     ray.origin + t * Unit::new_normalize(ray.direction).into_inner()
 }
 
-fn vector3_to_color(v: Vector3<f32>) -> Rgb<u8> {
-    Rgb([f32_to_u8(v.x), f32_to_u8(v.y), f32_to_u8(v.z)])
+#[derive(Debug, Clone)]
+struct HitResult {
+    t: f32,
+    p: Point3<f32>,
+    normal: Vector3<f32>,
 }
 
-fn color(ray: &Ray) -> Rgb<u8> {
-    let center = Point3::new(0.0, 0.0, -1.0);
-    let t = hit_sphere(center, 0.5, &ray);
-    if t > 0.0 {
-        let n = Unit::new_normalize(point_at_parameter(&ray, t) - center).into_inner();
-        let color = 0.5 * Vector3::new(n.x + 1.0, n.y + 1.0, n.z + 1.0);
+trait Hit {
+    fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitResult>;
+}
+
+#[derive(Debug, Clone)]
+struct Sphere {
+    center: Point3<f32>,
+    radius: f32,
+}
+
+impl Hit for Sphere {
+    fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitResult> {
+        let oc = ray.origin - self.center;
+        let a = ray.direction.dot(&ray.direction);
+        let b = 2.0 * oc.dot(&ray.direction);
+        let c = oc.dot(&oc) - self.radius * self.radius;
+
+        // This seems wrong in that it doesn't detect which point is closest to ray origin
+        let discriminant = b * b - 4.0 * a * c;
+        let t1 = (-b - discriminant.sqrt()) / (2.0 * a);
+        let t2 = (-b + discriminant.sqrt()) / (2.0 * a);
+
+        if discriminant > 0.0 && t1 > t_min && t1 < t_max {
+            let p = point_at_parameter(&ray, t1);
+            let normal = (p - self.center) / self.radius;
+            Some(HitResult { t: t1, p, normal })
+        } else if discriminant > 0.0 && t2 > t_min && t2 < t_max {
+            let p = point_at_parameter(&ray, t2);
+            let normal = (p - self.center) / self.radius;
+            Some(HitResult { t: t2, p, normal })
+        } else {
+            None
+        }
+    }
+}
+
+impl Hit for Vec<Box<dyn Hit>> {
+    fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitResult> {
+        self.iter()
+            .filter_map(|h| h.hit(&ray, t_min, t_max))
+            .min_by(|x, y| x.t.partial_cmp(&y.t).unwrap_or(Ordering::Equal))
+    }
+}
+
+fn color(ray: &Ray, scene: &dyn Hit) -> Rgb<u8> {
+    if let Some(hit) = scene.hit(&ray, 0.0, std::f32::MAX) {
+        let color = 0.5 * Vector3::new(hit.normal.x + 1.0, hit.normal.y + 1.0, hit.normal.z + 1.0);
         return vector3_to_color(color);
     }
 
@@ -90,6 +126,17 @@ fn main() -> Result<(), Error> {
 
     info!("Rendering to {} ({}x{})", &output, width, height);
 
+    let scene: Vec<Box<dyn Hit>> = vec![
+        Box::new(Sphere {
+            center: Point3::new(0.0, 0.0, -1.0),
+            radius: 0.5,
+        }),
+        Box::new(Sphere {
+            center: Point3::new(0.0, -100.5, -1.0),
+            radius: 100.0,
+        }),
+    ];
+
     let origin = Point3::new(0.0, 0.0, 0.0);
     let lower_left_corner = Vector3::new(-2.0, -1.0, -1.0);
     let horizontal = Vector3::new(4.0, 0.0, 0.0);
@@ -99,8 +146,11 @@ fn main() -> Result<(), Error> {
         let u = x as f32 / width as f32;
         let v = y as f32 / height as f32;
 
-        let ray = Ray::new(origin, lower_left_corner + u * horizontal + (1.0 - v) * vertical);
-        color(&ray)
+        let ray = Ray::new(
+            origin,
+            lower_left_corner + u * horizontal + (1.0 - v) * vertical,
+        );
+        color(&ray, &scene)
     });
 
     img.save(output).map_err(Error::from)
