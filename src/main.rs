@@ -9,25 +9,41 @@ fn f32_to_u8(f: f32) -> u8 {
     (f * 255.99) as u8
 }
 
-fn hit_sphere(center: Point3<f32>, radius: f32, ray: &Ray) -> bool {
+fn hit_sphere(center: Point3<f32>, radius: f32, ray: &Ray) -> f32 {
     let oc = ray.origin - center;
     let a = ray.direction.dot(&ray.direction);
     let b = 2.0 * oc.dot(&ray.direction);
     let c = oc.dot(&oc) - radius * radius;
     let discriminant = b * b - 4.0 * a * c;
 
-    discriminant > 0.0
+    if discriminant < 0.0 {
+        -1.0
+    } else {
+        (-b - discriminant.sqrt()) / (2.0 * a)
+    }
+}
+
+fn point_at_parameter(ray: &Ray, t: f32) -> Point3<f32> {
+    ray.origin + t * Unit::new_normalize(ray.direction).into_inner()
+}
+
+fn vector3_to_color(v: Vector3<f32>) -> Rgb<u8> {
+    Rgb([f32_to_u8(v.x), f32_to_u8(v.y), f32_to_u8(v.z)])
 }
 
 fn color(ray: &Ray) -> Rgb<u8> {
-    if hit_sphere(Point3::new(0.0, 0.0, -1.0), 0.5, &ray) {
-        return Rgb([255, 0, 0]);
+    let center = Point3::new(0.0, 0.0, -1.0);
+    let t = hit_sphere(center, 0.5, &ray);
+    if t > 0.0 {
+        let n = Unit::new_normalize(point_at_parameter(&ray, t) - center).into_inner();
+        let color = 0.5 * Vector3::new(n.x + 1.0, n.y + 1.0, n.z + 1.0);
+        return vector3_to_color(color);
     }
 
     let unit_direction = Unit::new_normalize(ray.direction).into_inner();
     let t = 0.5 * (unit_direction.y + 1.0);
     let color = (1.0 - t) * Vector3::new(1.0, 1.0, 1.0) + t * Vector3::new(0.5, 0.7, 1.0);
-    Rgb([f32_to_u8(color.x), f32_to_u8(color.y), f32_to_u8(color.z)])
+    vector3_to_color(color)
 }
 
 fn main() -> Result<(), Error> {
