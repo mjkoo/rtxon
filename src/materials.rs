@@ -85,16 +85,16 @@ impl Material for Dialectric {
         let attenuation = color_to_vector3(self.albedo);
 
         let reflected = reflect(ray.direction, hit.normal);
-        let dot = ray.direction.dot(&hit.normal);
+        let dot = ray.direction.dot(&hit.normal) / ray.direction.magnitude();
 
         let (outward_normal, ni_over_nt, cosine) = if dot > 0.0 {
             (
                 -hit.normal,
                 self.ior,
-                self.ior * dot / ray.direction.magnitude(),
+                (1.0 - self.ior * self.ior * (1.0 - dot * dot)).sqrt(),
             )
         } else {
-            (-hit.normal, self.ior, -dot / ray.direction.magnitude())
+            (hit.normal, 1.0 / self.ior, -dot)
         };
 
         if let Some(refracted) = refract(ray.direction, outward_normal, ni_over_nt) {

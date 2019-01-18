@@ -238,7 +238,7 @@ fn main() -> Result<(), Error> {
     let end = Instant::now();
     pb.finish();
 
-    info!("Rendered in {:?}", end.duration_since(start));
+    info!("Finished in {:?}", end.duration_since(start));
 
     img.save(output).map_err(Error::from)
 }
