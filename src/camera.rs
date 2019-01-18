@@ -1,33 +1,41 @@
-use std::f32::consts::PI;
+use rand::random;
 
-use bvh::ray::Ray;
-use nalgebra::{Point3, Vector3};
+use crate::types::{Point3, Ray, Scalar, Vector3};
 
-use crate::utils::random_in_unit_disk;
+fn random_in_unit_disk() -> Vector3 {
+    let offset = Vector3::new(1.0, 1.0, 0.0);
+    let mut p: Vector3;
+    while {
+        p = 2.0 * Vector3::new(random::<Scalar>(), random::<Scalar>(), 0.0) - offset;
+        p.dot(&p) >= 1.0
+    } {}
+
+    p
+}
 
 #[derive(Debug, Clone)]
 pub struct Camera {
-    origin: Point3<f32>,
-    lower_left_corner: Point3<f32>,
-    horizontal: Vector3<f32>,
-    vertical: Vector3<f32>,
-    u: Vector3<f32>,
-    v: Vector3<f32>,
-    w: Vector3<f32>,
-    lens_radius: f32,
+    origin: Point3,
+    lower_left_corner: Point3,
+    horizontal: Vector3,
+    vertical: Vector3,
+    u: Vector3,
+    v: Vector3,
+    w: Vector3,
+    lens_radius: Scalar,
 }
 
 impl Camera {
     pub fn new(
-        origin: Point3<f32>,
-        lookat: Point3<f32>,
-        up: Vector3<f32>,
-        vfov_degrees: f32,
-        aspect_ratio: f32,
-        aperture: f32,
-        focal_length: f32,
+        origin: Point3,
+        lookat: Point3,
+        up: Vector3,
+        vfov_degrees: Scalar,
+        aspect_ratio: Scalar,
+        aperture: Scalar,
+        focal_length: Scalar,
     ) -> Self {
-        let theta = vfov_degrees * PI / 180.0;
+        let theta = vfov_degrees * std::f32::consts::PI / 180.0;
         let half_height = (theta / 2.0).tan();
         let half_width = aspect_ratio * half_height;
 
@@ -50,7 +58,7 @@ impl Camera {
         }
     }
 
-    pub fn get_ray(&self, s: f32, t: f32) -> Ray {
+    pub fn get_ray(&self, s: Scalar, t: Scalar) -> Ray {
         let rd = self.lens_radius * random_in_unit_disk();
         let offset = rd.x * self.u + rd.y * self.v;
         Ray::new(

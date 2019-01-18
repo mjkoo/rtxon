@@ -1,33 +1,30 @@
 use std::cmp::Ordering;
 use std::rc::Rc;
 
-use bvh::ray::Ray;
-use nalgebra::{Point3, Vector3};
-
 use crate::materials::Material;
-use crate::utils::point_at_parameter;
+use crate::types::{Point3, Ray, Scalar, Vector3};
 
 #[derive(Debug, Clone)]
 pub struct HitResult {
-    pub t: f32,
-    pub p: Point3<f32>,
-    pub normal: Vector3<f32>,
+    pub t: Scalar,
+    pub p: Point3,
+    pub normal: Vector3,
     pub material: Rc<dyn Material>,
 }
 
 pub trait Shape {
-    fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitResult>;
+    fn hit(&self, ray: &Ray, t_min: Scalar, t_max: Scalar) -> Option<HitResult>;
 }
 
 #[derive(Debug, Clone)]
 pub struct Sphere {
-    pub center: Point3<f32>,
-    pub radius: f32,
+    pub center: Point3,
+    pub radius: Scalar,
     pub material: Rc<dyn Material>,
 }
 
 impl Shape for Sphere {
-    fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitResult> {
+    fn hit(&self, ray: &Ray, t_min: Scalar, t_max: Scalar) -> Option<HitResult> {
         let oc = ray.origin - self.center;
         let a = ray.direction.dot(&ray.direction);
         let b = 2.0 * oc.dot(&ray.direction);
@@ -46,7 +43,7 @@ impl Shape for Sphere {
         };
 
         t.and_then(|t| {
-            let p = point_at_parameter(&ray, t);
+            let p = ray.at(t);
             let normal = (p - self.center) / self.radius;
             Some(HitResult {
                 t,
@@ -61,7 +58,7 @@ impl Shape for Sphere {
 pub type Scene = Vec<Box<dyn Shape>>;
 
 impl Shape for Scene {
-    fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitResult> {
+    fn hit(&self, ray: &Ray, t_min: Scalar, t_max: Scalar) -> Option<HitResult> {
         self.iter()
             .filter_map(|h| h.hit(&ray, t_min, t_max))
             .min_by(|x, y| x.t.partial_cmp(&y.t).unwrap_or(Ordering::Equal))

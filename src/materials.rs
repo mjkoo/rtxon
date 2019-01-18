@@ -1,16 +1,24 @@
-use bvh::ray::Ray;
-use image::Rgb;
-use nalgebra::Vector3;
 use rand::random;
 
 use crate::shapes::HitResult;
-use crate::utils::{color_to_vector3, random_in_unit_sphere};
+use crate::types::{Color, Ray, Vector3};
 
-fn reflect(v: Vector3<f32>, n: Vector3<f32>) -> Vector3<f32> {
+fn random_in_unit_sphere() -> Vector3 {
+    let offset = Vector3::new(1.0, 1.0, 1.0);
+    let mut p: Vector3;
+    while {
+        p = 2.0 * Vector3::new(random::<f32>(), random::<f32>(), random::<f32>()) - offset;
+        p.magnitude_squared() >= 1.0
+    } {}
+
+    p
+}
+
+fn reflect(v: Vector3, n: Vector3) -> Vector3 {
     v - 2.0 * v.dot(&n) * n
 }
 
-fn refract(v: Vector3<f32>, n: Vector3<f32>, ni_over_nt: f32) -> Option<Vector3<f32>> {
+fn refract(v: Vector3, n: Vector3, ni_over_nt: f32) -> Option<Vector3> {
     let uv = v.normalize();
     let dt = uv.dot(&n);
     let discriminant = 1.0 - ni_over_nt * ni_over_nt * (1.0 - dt * dt);
@@ -31,7 +39,7 @@ fn schlick(cosine: f32, ior: f32) -> f32 {
 
 pub struct ScatteredRay {
     pub ray: Ray,
-    pub attenuation: Vector3<f32>,
+    pub attenuation: Color,
 }
 
 pub trait Material: std::fmt::Debug {
@@ -40,7 +48,7 @@ pub trait Material: std::fmt::Debug {
 
 #[derive(Debug, Clone)]
 pub struct Lambertian {
-    pub albedo: Rgb<u8>,
+    pub albedo: Color,
 }
 
 impl Material for Lambertian {
@@ -49,14 +57,14 @@ impl Material for Lambertian {
         let target = hit.p.coords + hit.normal + random_in_unit_sphere();
         Some(ScatteredRay {
             ray: Ray::new(hit.p, target - hit.p.coords),
-            attenuation: color_to_vector3(self.albedo),
+            attenuation: self.albedo,
         })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Metal {
-    pub albedo: Rgb<u8>,
+    pub albedo: Color,
     pub roughness: f32,
 }
 
@@ -66,7 +74,7 @@ impl Material for Metal {
         if reflected.dot(&hit.normal) > 0.0 {
             Some(ScatteredRay {
                 ray: Ray::new(hit.p, reflected + self.roughness * random_in_unit_sphere()),
-                attenuation: color_to_vector3(self.albedo),
+                attenuation: self.albedo,
             })
         } else {
             None
@@ -76,14 +84,12 @@ impl Material for Metal {
 
 #[derive(Debug, Clone)]
 pub struct Dialectric {
-    pub albedo: Rgb<u8>,
+    pub albedo: Color,
     pub ior: f32,
 }
 
 impl Material for Dialectric {
     fn scatter(&self, ray: &Ray, hit: &HitResult) -> Option<ScatteredRay> {
-        let attenuation = color_to_vector3(self.albedo);
-
         let reflected = reflect(ray.direction, hit.normal);
         let dot = ray.direction.dot(&hit.normal) / ray.direction.magnitude();
 
@@ -101,14 +107,14 @@ impl Material for Dialectric {
             if random::<f32>() >= schlick(cosine, self.ior) {
                 return Some(ScatteredRay {
                     ray: Ray::new(hit.p, refracted),
-                    attenuation,
+                    attenuation: self.albedo,
                 });
             }
         }
 
         Some(ScatteredRay {
             ray: Ray::new(hit.p, reflected),
-            attenuation,
+            attenuation: self.albedo,
         })
     }
 }

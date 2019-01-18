@@ -1,45 +1,39 @@
 use std::rc::Rc;
 use std::time::Instant;
 
-use bvh::ray::Ray;
 use clap::{value_t_or_exit, App, Arg};
 use failure::Error;
-use image::{ImageBuffer, Rgb};
+use image::ImageBuffer;
 use log::info;
-use nalgebra::{Point3, Vector3};
 use pbr::ProgressBar;
 use rand::random;
 
 mod camera;
 mod materials;
 mod shapes;
-mod utils;
+mod types;
 
 use crate::camera::Camera;
 use crate::materials::{Dialectric, Lambertian, Metal};
 use crate::shapes::{Scene, Shape, Sphere};
-use crate::utils::vector3_to_color;
+use crate::types::{Color, Point3, Ray, Scalar, Vector3};
 
-fn color(ray: &Ray, scene: &Scene, maxdepth: u32, depth: u32) -> Vector3<f32> {
+fn color(ray: &Ray, scene: &Scene, maxdepth: u32, depth: u32) -> Color {
     if let Some(hit) = scene.hit(&ray, 0.001, std::f32::MAX) {
         if depth >= maxdepth {
-            return Vector3::new(0.0, 0.0, 0.0);
+            return Color::new(0.0, 0.0, 0.0, 1.0);
         }
 
         if let Some(scattered) = hit.material.scatter(&ray, &hit) {
-            return scattered.attenuation.component_mul(&color(
-                &scattered.ray,
-                scene,
-                maxdepth,
-                depth + 1,
-            ));
+            return scattered.attenuation * color(&scattered.ray, scene, maxdepth, depth + 1);
         }
     }
 
     let unit_direction = ray.direction.normalize();
     let t = 0.5 * (unit_direction.y + 1.0);
+    let c = (1.0 - t) * Vector3::new(1.0, 1.0, 1.0) + t * Vector3::new(0.5, 0.7, 1.0);
 
-    (1.0 - t) * Vector3::new(1.0, 1.0, 1.0) + t * Vector3::new(0.5, 0.7, 1.0)
+    c.into()
 }
 
 fn generate_scene() -> Scene {
@@ -48,7 +42,7 @@ fn generate_scene() -> Scene {
         center: Point3::new(0.0, -1000.0, 0.0),
         radius: 1000.0,
         material: Rc::new(Lambertian {
-            albedo: Rgb([0x7f, 0x7f, 0x7f]),
+            albedo: Color::new(0.5, 0.5, 0.5, 1.0),
         }),
     }));
 
@@ -56,19 +50,20 @@ fn generate_scene() -> Scene {
     for a in -11..11 {
         for b in -11..11 {
             let center = Point3::new(
-                (a as f32) + 0.9 * random::<f32>(),
+                (a as Scalar) + 0.9 * random::<Scalar>(),
                 0.2,
-                (b as f32) + 0.9 * random::<f32>(),
+                (b as Scalar) + 0.9 * random::<Scalar>(),
             );
-            let choose_mat = random::<f32>();
+            let choose_mat = random::<Scalar>();
 
             if (center - avoid).coords.magnitude() > 0.9 {
                 if choose_mat < 0.8 {
-                    let albedo = vector3_to_color(Vector3::new(
-                        random::<f32>() * random::<f32>(),
-                        random::<f32>() * random::<f32>(),
-                        random::<f32>() * random::<f32>(),
-                    ));
+                    let albedo = Color::new(
+                        random::<Scalar>() * random::<Scalar>(),
+                        random::<Scalar>() * random::<Scalar>(),
+                        random::<Scalar>() * random::<Scalar>(),
+                        1.0,
+                    );
 
                     scene.push(Box::new(Sphere {
                         center,
@@ -76,12 +71,13 @@ fn generate_scene() -> Scene {
                         material: Rc::new(Lambertian { albedo }),
                     }));
                 } else if choose_mat < 0.95 {
-                    let albedo = vector3_to_color(Vector3::new(
-                        0.5 * (1.0 + random::<f32>()),
-                        0.5 * (1.0 + random::<f32>()),
-                        0.5 * (1.0 + random::<f32>()),
-                    ));
-                    let roughness = 0.5 * random::<f32>();
+                    let albedo = Color::new(
+                        0.5 * (1.0 + random::<Scalar>()),
+                        0.5 * (1.0 + random::<Scalar>()),
+                        0.5 * (1.0 + random::<Scalar>()),
+                        1.0,
+                    );
+                    let roughness = 0.5 * random::<Scalar>();
 
                     scene.push(Box::new(Sphere {
                         center,
@@ -89,7 +85,7 @@ fn generate_scene() -> Scene {
                         material: Rc::new(Metal { albedo, roughness }),
                     }));
                 } else {
-                    let albedo = Rgb([0xff, 0xff, 0xff]);
+                    let albedo = Color::new(1.0, 1.0, 1.0, 1.0);
                     let ior = 1.5;
 
                     scene.push(Box::new(Sphere {
@@ -106,7 +102,7 @@ fn generate_scene() -> Scene {
         center: Point3::new(0.0, 1.0, 0.0),
         radius: 1.0,
         material: Rc::new(Dialectric {
-            albedo: Rgb([0xff, 0xff, 0xff]),
+            albedo: Color::new(1.0, 1.0, 1.0, 1.0),
             ior: 1.5,
         }),
     }));
@@ -115,7 +111,7 @@ fn generate_scene() -> Scene {
         center: Point3::new(-4.0, 1.0, 0.0),
         radius: 1.0,
         material: Rc::new(Lambertian {
-            albedo: Rgb([0x66, 0x33, 0x19]),
+            albedo: Color::new(0.4, 0.2, 0.1, 1.0),
         }),
     }));
 
@@ -123,7 +119,7 @@ fn generate_scene() -> Scene {
         center: Point3::new(4.0, 1.0, 0.0),
         radius: 1.0,
         material: Rc::new(Metal {
-            albedo: Rgb([0xb3, 0x99, 0x7f]),
+            albedo: Color::new(0.7, 0.6, 0.5, 1.0),
             roughness: 0.0,
         }),
     }));
@@ -204,7 +200,7 @@ fn main() -> Result<(), Error> {
 
     let lookfrom = Point3::new(13.0, 2.0, 3.0);
     let lookat = Point3::new(0.0, 0.0, 0.0);
-    let aspect_ratio = (width as f32) / (height as f32);
+    let aspect_ratio = (width as Scalar) / (height as Scalar);
     let focal_length = (lookfrom - lookat).magnitude();
 
     let camera = Camera::new(
@@ -217,22 +213,24 @@ fn main() -> Result<(), Error> {
         focal_length,
     );
 
-    let mut pb = ProgressBar::new((width * height) as u64);
+    let mut pb = ProgressBar::new(u64::from(width * height));
     let start = Instant::now();
 
-    let img = ImageBuffer::from_fn(width, height, |x, y| {
-        let mut c = Vector3::new(0.0, 0.0, 0.0);
+    let img = ImageBuffer::from_fn(width, height, |x, y| -> image::Rgba<u8> {
+        let mut c = Color::new(0.0, 0.0, 0.0, 0.0);
 
         for _ in 0..samples {
-            let u = (x as f32 + random::<f32>()) / width as f32;
-            let v = 1.0 - (y as f32 + random::<f32>()) / height as f32;
+            let u = (x as Scalar + random::<Scalar>()) / width as Scalar;
+            let v = 1.0 - (y as Scalar + random::<Scalar>()) / height as Scalar;
 
             let ray = camera.get_ray(u, v);
             c += color(&ray, &scene, maxdepth, 0)
         }
 
         pb.inc();
-        vector3_to_color(c / (samples as f32))
+        c /= samples as Scalar;
+
+        c.into()
     });
 
     let end = Instant::now();
