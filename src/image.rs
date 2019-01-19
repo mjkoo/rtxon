@@ -19,6 +19,7 @@ fn cache_line_size() -> Option<usize> {
     None
 }
 
+// Each row should only be accessed by one thread
 struct Row<P: Pixel>(*mut P);
 unsafe impl<P: Pixel> Send for Row<P> {}
 unsafe impl<P: Pixel> Sync for Row<P> {}
@@ -40,6 +41,7 @@ impl<P: Pixel> Image<P> {
         let row_layout = Layout::from_size_align(bytes_per_row, align.unwrap_or(64))
             .expect("invalid memory layout");
 
+        // Allocate each row of the image as aligned memory to prevent false sharing
         let mut rows = vec![];
         unsafe {
             for _ in 0..height {
@@ -62,6 +64,7 @@ impl<P: Pixel> Image<P> {
         let nproc = num_cpus::get();
         let mut pool = Pool::new(nproc as u32);
 
+        // Schedule rendering of each row on our threadpool
         pool.scoped(|scoped| {
             let width = self.width;
 
@@ -92,6 +95,7 @@ impl<P: Pixel<Subpixel=u8> + 'static> Image<P> {
     where
         Q: AsRef<Path>,
     {
+        // Construct an ImageBuffer from each row of pixels
         let img = ImageBuffer::from_fn(self.width as u32, self.height as u32, |x, y| -> P {
             let row = &self.rows[y as usize];
             unsafe {

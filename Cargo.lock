@@ -650,7 +650,7 @@ dependencies = [
 
 [[package]]
 name = "rtxon"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bvh 0.2.4 (git+https://github.com/svenstaro/bvh.git?rev=35a9df4)",
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
