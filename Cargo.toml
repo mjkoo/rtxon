@@ -1,6 +1,6 @@
 [package]
 name = "rtxon"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Maxwell Koo <mjkoo90@gmail.com>"]
 edition = "2018"
 description = "Simple raytracer built as a learning exercise in Rust"
@@ -15,9 +15,13 @@ env_logger = "0.6"
 failure = "0.1"
 log = "0.4"
 nalgebra = "0.16"
+num_cpus = "1.9"
+num-traits= "0.2"
 image = "0.21"
 pbr = "1.0"
 rand = "0.6"
+raw-cpuid = "6.1" 
+scoped_threadpool = "0.1"
 
 [profile.release]
 lto = true
