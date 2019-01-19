@@ -42,7 +42,7 @@ pub struct ScatteredRay {
     pub attenuation: Color,
 }
 
-pub trait Material: std::fmt::Debug {
+pub trait Material: Send + Sync + std::fmt::Debug {
     fn scatter(&self, ray: &Ray, hit: &HitResult) -> Option<ScatteredRay>;
 }
 

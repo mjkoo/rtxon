@@ -1,14 +1,14 @@
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use clap::{value_t_or_exit, App, Arg};
 use failure::Error;
-use image::ImageBuffer;
 use log::info;
 use pbr::ProgressBar;
 use rand::random;
 
 mod camera;
+mod image;
 mod materials;
 mod shapes;
 mod types;
@@ -38,10 +38,10 @@ fn color(ray: &Ray, scene: &Scene, maxdepth: u32, depth: u32) -> Color {
 
 fn generate_scene() -> Scene {
     let mut scene: Scene = vec![];
-    scene.push(Box::new(Sphere {
+    scene.push(Arc::new(Sphere {
         center: Point3::new(0.0, -1000.0, 0.0),
         radius: 1000.0,
-        material: Rc::new(Lambertian {
+        material: Arc::new(Lambertian {
             albedo: Color::new(0.5, 0.5, 0.5, 1.0),
         }),
     }));
@@ -65,10 +65,10 @@ fn generate_scene() -> Scene {
                         1.0,
                     );
 
-                    scene.push(Box::new(Sphere {
+                    scene.push(Arc::new(Sphere {
                         center,
                         radius: 0.2,
-                        material: Rc::new(Lambertian { albedo }),
+                        material: Arc::new(Lambertian { albedo }),
                     }));
                 } else if choose_mat < 0.95 {
                     let albedo = Color::new(
@@ -79,46 +79,46 @@ fn generate_scene() -> Scene {
                     );
                     let roughness = 0.5 * random::<Scalar>();
 
-                    scene.push(Box::new(Sphere {
+                    scene.push(Arc::new(Sphere {
                         center,
                         radius: 0.2,
-                        material: Rc::new(Metal { albedo, roughness }),
+                        material: Arc::new(Metal { albedo, roughness }),
                     }));
                 } else {
                     let albedo = Color::new(1.0, 1.0, 1.0, 1.0);
                     let ior = 1.5;
 
-                    scene.push(Box::new(Sphere {
+                    scene.push(Arc::new(Sphere {
                         center,
                         radius: 0.2,
-                        material: Rc::new(Dialectric { albedo, ior }),
+                        material: Arc::new(Dialectric { albedo, ior }),
                     }));
                 }
             }
         }
     }
 
-    scene.push(Box::new(Sphere {
+    scene.push(Arc::new(Sphere {
         center: Point3::new(0.0, 1.0, 0.0),
         radius: 1.0,
-        material: Rc::new(Dialectric {
+        material: Arc::new(Dialectric {
             albedo: Color::new(1.0, 1.0, 1.0, 1.0),
             ior: 1.5,
         }),
     }));
 
-    scene.push(Box::new(Sphere {
+    scene.push(Arc::new(Sphere {
         center: Point3::new(-4.0, 1.0, 0.0),
         radius: 1.0,
-        material: Rc::new(Lambertian {
+        material: Arc::new(Lambertian {
             albedo: Color::new(0.4, 0.2, 0.1, 1.0),
         }),
     }));
 
-    scene.push(Box::new(Sphere {
+    scene.push(Arc::new(Sphere {
         center: Point3::new(4.0, 1.0, 0.0),
         radius: 1.0,
-        material: Rc::new(Metal {
+        material: Arc::new(Metal {
             albedo: Color::new(0.7, 0.6, 0.5, 1.0),
             roughness: 0.0,
         }),
@@ -213,30 +213,40 @@ fn main() -> Result<(), Error> {
         focal_length,
     );
 
-    let mut pb = ProgressBar::new(u64::from(width * height));
+    let pb = Arc::new(Mutex::new(ProgressBar::new(u64::from(width * height))));
     let start = Instant::now();
 
-    let img = ImageBuffer::from_fn(width, height, |x, y| -> image::Rgba<u8> {
-        let mut c = Color::new(0.0, 0.0, 0.0, 0.0);
+    let img = {
+        let pb = pb.clone();
 
-        for _ in 0..samples {
-            let u = (x as Scalar + random::<Scalar>()) / width as Scalar;
-            let v = 1.0 - (y as Scalar + random::<Scalar>()) / height as Scalar;
+        image::Image::from_fn(
+            width as usize,
+            height as usize,
+            move |x, y| -> ::image::Rgba<u8> {
+                let mut c = Color::new(0.0, 0.0, 0.0, 0.0);
 
-            let ray = camera.get_ray(u, v);
-            c += color(&ray, &scene, maxdepth, 0)
-        }
+                for _ in 0..samples {
+                    let u = (x as Scalar + random::<Scalar>()) / width as Scalar;
+                    let v = 1.0 - (y as Scalar + random::<Scalar>()) / height as Scalar;
 
-        pb.inc();
-        c /= samples as Scalar;
+                    let ray = camera.get_ray(u, v);
+                    c += color(&ray, &scene, maxdepth, 0)
+                }
 
-        c.into()
-    });
+                pb.lock().unwrap().inc();
+                c /= samples as Scalar;
+
+                c.into()
+            },
+        )
+    };
+
+    img.save(output).map_err(Error::from)?;
 
     let end = Instant::now();
-    pb.finish();
+    pb.lock().unwrap().finish();
 
     info!("Finished in {:?}", end.duration_since(start));
 
-    img.save(output).map_err(Error::from)
+    Ok(())
 }

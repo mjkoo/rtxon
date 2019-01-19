@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::materials::Material;
 use crate::types::{Point3, Ray, Scalar, Vector3};
@@ -9,10 +9,10 @@ pub struct HitResult {
     pub t: Scalar,
     pub p: Point3,
     pub normal: Vector3,
-    pub material: Rc<dyn Material>,
+    pub material: Arc<dyn Material>,
 }
 
-pub trait Shape {
+pub trait Shape: Send + Sync {
     fn hit(&self, ray: &Ray, t_min: Scalar, t_max: Scalar) -> Option<HitResult>;
 }
 
@@ -20,7 +20,7 @@ pub trait Shape {
 pub struct Sphere {
     pub center: Point3,
     pub radius: Scalar,
-    pub material: Rc<dyn Material>,
+    pub material: Arc<dyn Material>,
 }
 
 impl Shape for Sphere {
@@ -55,7 +55,7 @@ impl Shape for Sphere {
     }
 }
 
-pub type Scene = Vec<Box<dyn Shape>>;
+pub type Scene = Vec<Arc<dyn Shape>>;
 
 impl Shape for Scene {
     fn hit(&self, ray: &Ray, t_min: Scalar, t_max: Scalar) -> Option<HitResult> {
