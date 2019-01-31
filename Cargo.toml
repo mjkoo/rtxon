@@ -9,7 +9,7 @@ readme = "README.md"
 license = "Apache-2.0"
 
 [dependencies]
-bvh = { git = "https://github.com/svenstaro/bvh.git", rev = "35a9df4" }
+bvh = "0.3"
 clap = "2.32"
 env_logger = "0.6"
 failure = "0.1"
