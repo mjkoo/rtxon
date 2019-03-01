@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::materials::Material;
 use crate::types::{Point3, Ray, Scalar, Vector3};
 
+/// Result of ray intersection with a shape
 #[derive(Debug, Clone)]
 pub struct HitResult {
     pub t: Scalar,
@@ -12,10 +13,13 @@ pub struct HitResult {
     pub material: Arc<dyn Material>,
 }
 
+/// Shape defines objects intersectable by rays
 pub trait Shape: Send + Sync {
+    /// Does an incoming ray intersect this shape
     fn hit(&self, ray: &Ray, t_min: Scalar, t_max: Scalar) -> Option<HitResult>;
 }
 
+/// Spherical shape
 #[derive(Debug, Clone)]
 pub struct Sphere {
     pub center: Point3,
@@ -24,6 +28,7 @@ pub struct Sphere {
 }
 
 impl Shape for Sphere {
+    /// Does an incoming ray intersect this shape
     fn hit(&self, ray: &Ray, t_min: Scalar, t_max: Scalar) -> Option<HitResult> {
         let oc = ray.origin - self.center;
         let a = ray.direction.dot(&ray.direction);
@@ -55,10 +60,13 @@ impl Shape for Sphere {
     }
 }
 
+/// A collection of other shapes, itself intersectable
 pub type Scene = Vec<Arc<dyn Shape>>;
 
 impl Shape for Scene {
+    /// Does an incoming ray intersect this shape
     fn hit(&self, ray: &Ray, t_min: Scalar, t_max: Scalar) -> Option<HitResult> {
+        // TODO: Use an acceleration structure such as a BVH to optimize this
         self.iter()
             .filter_map(|h| h.hit(&ray, t_min, t_max))
             .min_by(|x, y| x.t.partial_cmp(&y.t).unwrap_or(Ordering::Equal))

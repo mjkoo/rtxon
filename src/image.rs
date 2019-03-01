@@ -8,6 +8,7 @@ use image::{ImageBuffer, Pixel};
 use raw_cpuid::CpuId;
 use scoped_threadpool::Pool;
 
+/// Determine the size of a cache line, used to align allocations and prevent false sharing
 fn cache_line_size() -> Option<usize> {
     let cpuid = CpuId::new();
     if let Some(cparams) = cpuid.get_cache_parameters() {
@@ -19,11 +20,12 @@ fn cache_line_size() -> Option<usize> {
     None
 }
 
-// Each row should only be accessed by one thread
+/// A row of pixels in the resulting image, accessed by one thread at a time
 struct Row<P: Pixel>(*mut P);
 unsafe impl<P: Pixel> Send for Row<P> {}
 unsafe impl<P: Pixel> Sync for Row<P> {}
 
+/// Image consisting of rows of pixels, used to perform parallel rendering of rows
 pub struct Image<P: Pixel> {
     width: usize,
     height: usize,
@@ -33,6 +35,7 @@ pub struct Image<P: Pixel> {
 }
 
 impl<P: Pixel> Image<P> {
+    /// Create a new image
     pub fn new(width: usize, height: usize) -> Self {
         let bytes_per_pixel = size_of::<P::Subpixel>() * (P::channel_count() as usize);
         let bytes_per_row = bytes_per_pixel * width;
@@ -58,6 +61,7 @@ impl<P: Pixel> Image<P> {
         }
     }
 
+    /// Render an image using a function to calculate the value of each pixel
     pub fn render<F>(&mut self, f: F)
         where F: Fn(u32, u32) -> P + Send + Clone + 'static
     {
@@ -81,6 +85,7 @@ impl<P: Pixel> Image<P> {
         });
     }
 
+    /// Create and then render an image using a function to calculate the value of each pixel
     pub fn from_fn<F>(width: usize, height: usize, f: F) -> Self
         where F: Fn(u32, u32) -> P + Send + Clone + 'static 
     {
@@ -91,6 +96,7 @@ impl<P: Pixel> Image<P> {
 }
 
 impl<P: Pixel<Subpixel=u8> + 'static> Image<P> {
+    /// Save an image to disk
     pub fn save<Q>(&self, path: Q) -> Result<()>
     where
         Q: AsRef<Path>,
@@ -109,6 +115,7 @@ impl<P: Pixel<Subpixel=u8> + 'static> Image<P> {
 }
 
 impl<P: Pixel> Drop for Image<P> {
+    /// Deallocate constituent rows on drop
     fn drop(&mut self) {
         unsafe {
             for r in self.rows.iter() {

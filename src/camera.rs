@@ -2,6 +2,7 @@ use rand::random;
 
 use crate::types::{Point3, Ray, Scalar, Vector3};
 
+/// Sample a random point in the unit disk via rejection
 fn random_in_unit_disk() -> Vector3 {
     let offset = Vector3::new(1.0, 1.0, 0.0);
     let mut p: Vector3;
@@ -13,6 +14,7 @@ fn random_in_unit_disk() -> Vector3 {
     p
 }
 
+/// Adjustable camera for generating eye rays according to given parameters
 #[derive(Debug, Clone)]
 pub struct Camera {
     origin: Point3,
@@ -26,6 +28,7 @@ pub struct Camera {
 }
 
 impl Camera {
+    /// Create a new camera
     pub fn new(
         origin: Point3,
         lookat: Point3,
@@ -58,6 +61,7 @@ impl Camera {
         }
     }
 
+    /// Get a ray from origin intersecting viewing plane at coordinates s and t
     pub fn get_ray(&self, s: Scalar, t: Scalar) -> Ray {
         let rd = self.lens_radius * random_in_unit_disk();
         let offset = rd.x * self.u + rd.y * self.v;

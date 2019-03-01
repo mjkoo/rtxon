@@ -1,10 +1,10 @@
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 pub type Scalar = f32;
-pub type Vector3 = nalgebra::Vector3<Scalar>;
-pub type Point3 = nalgebra::Point3<Scalar>;
-//pub type Matrix4 = nalgebra::Matrix4<Scalar>;
+pub type Vector3 = bvh::nalgebra::Vector3<Scalar>;
+pub type Point3 = bvh::nalgebra::Point3<Scalar>;
 
+/// A ray consisting of an origin point and direction vector
 #[derive(Debug, Clone)]
 pub struct Ray {
     pub origin: Point3,
@@ -12,6 +12,7 @@ pub struct Ray {
 }
 
 impl Ray {
+    /// Create a new ray
     pub fn new(origin: Point3, direction: Vector3) -> Self {
         Self {
             origin,
@@ -19,6 +20,7 @@ impl Ray {
         }
     }
 
+    /// Determine point along a ray at a given paramter
     pub fn at(&self, t: Scalar) -> Point3 {
         self.origin + t * self.direction
     }
@@ -36,14 +38,17 @@ impl Into<bvh::ray::Ray> for Ray {
     }
 }
 
+/// Convert a scalar (float) value between 0.0 and 1.0 to an unsigned byte value between 0 and 255
 fn scalar_to_u8(f: Scalar) -> u8 {
     (f * 255.99) as u8
 }
 
+/// Convert an unsigned byte value between 0 and 255 to a scalar (float) value between 0.0 and 1.0
 fn u8_to_scalar(b: u8) -> Scalar {
     Scalar::from(b) / 255.0
 }
 
+/// Red, green, blue, and alpha components of a color
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Color {
     pub r: Scalar,
@@ -53,6 +58,7 @@ pub struct Color {
 }
 
 impl Color {
+    /// Create a new color from scalar components
     pub fn new(r: Scalar, g: Scalar, b: Scalar, a: Scalar) -> Self {
         Self { r, g, b, a }
     }
@@ -112,6 +118,7 @@ impl From<Vector3> for Color {
     }
 }
 
+// Generate code for common aritmatic operations on Colors
 macro_rules! arith {
     ( $trait:ty, $scalar_trait:ty, $func:ident, $assign_trait:ty, $assign_scalar_trait:ty, $assign_func:ident, $op:tt ) => {
         impl $trait for Color {

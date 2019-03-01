@@ -18,6 +18,7 @@ use crate::materials::{Dialectric, Lambertian, Metal};
 use crate::shapes::{Scene, Shape, Sphere};
 use crate::types::{Color, Point3, Ray, Scalar, Vector3};
 
+/// Determine the color contribution from a given camera ray
 fn color(ray: &Ray, scene: &Scene, maxdepth: u32, depth: u32) -> Color {
     if let Some(hit) = scene.hit(&ray, 0.001, std::f32::MAX) {
         if depth >= maxdepth {
@@ -36,6 +37,7 @@ fn color(ray: &Ray, scene: &Scene, maxdepth: u32, depth: u32) -> Color {
     c.into()
 }
 
+/// Generate a random scene containing spheres of various sizes and materials
 fn generate_scene() -> Scene {
     let mut scene: Scene = vec![];
     scene.push(Arc::new(Sphere {
